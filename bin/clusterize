@@ -12,7 +12,7 @@ import datetime
 import subprocess
 import configparser
 
-from colored import style, fore
+from colored import Style, Fore
 
 history_file = os.path.join(os.path.expanduser('~'), '.clusterize_history')
 if not os.path.exists(history_file):
@@ -27,29 +27,27 @@ if not os.path.exists(pointer_file):
     with open(pointer_file, 'w') as f:
         f.write(default_config_path)
 
-SBATCH_template = """#!/bin/bash
-#SBATCH --job-name={job_name}
-#SBATCH --output={output}
-#SBATCH --error={error}
-#SBATCH --partition={partition}
-#SBATCH --nodes={num_nodes}
-#SBATCH --ntasks-per-node={num_tasks_per_node}
-#SBATCH --time={allotted_time}
-#SBATCH --mem-per-cpu={mem_per_cpu}
-#SBATCH --open-mode=append
-#SBATCH --nodelist={nodelist}
-#SBATCH --exclude={exclude}
-#SBATCH --mail-user={mail_user}
-#SBATCH --mail-type={mail_type}
+sbatch_param_list = ['#SBATCH --job-name={job_name}',
+'#SBATCH --output={output}',
+'#SBATCH --error={error}',
+'#SBATCH --partition={partition}',
+'#SBATCH --nodes={num_nodes}',
+'#SBATCH --ntasks-per-node={num_tasks_per_node}',
+'#SBATCH --time={allotted_time}',
+'#SBATCH --mem-per-cpu={mem_per_cpu}',
+'#SBATCH --open-mode=append',
+'#SBATCH --nodelist={nodelist}',
+'#SBATCH --exclude={exclude}',
+'#SBATCH --mail-user={mail_user}',
+'#SBATCH --mail-type={mail_type}']
 
-time {command}
-"""
 
 out_of_box_defaults = {
     'job_name': 'clusterize',
     'partition': None,
     'num_nodes': 1,
     'num_tasks_per_node': 1,
+    'num_gpus': '',
     'allotted_time': '4-0:00:00',
     'mem_per_cpu': 10000,
     'nodelist': '',
@@ -71,7 +69,7 @@ class Clusterize(object):
             if self.config_file_path == default_config_path:
                 get_default_config(self.config_file_path)
             else:
-                print(fore.RED + '{} does not exist. Try setting a new config file'.format(self.config_file_path))
+                print(Fore.RED + '{} does not exist. Try setting a new config file'.format(self.config_file_path))
                 sys.exit()
 
         self.user_defaults = {}
@@ -83,6 +81,7 @@ class Clusterize(object):
             'partition': A('partition', self.get_default),
             'num_nodes': A('num_nodes', self.get_default),
             'num_tasks_per_node': A('num_tasks_per_node', self.get_default),
+            'num_gpus': ''.join(['gpu:', str(A('num_gpus', self.get_default))]) if A('num_gpus', self.get_default) != '' else None,
             'allotted_time': A('allotted_time', self.get_default),
             'mem_per_cpu': A('mem_per_cpu', self.get_default),
             'nodelist': A('nodelist', self.get_default),
@@ -94,7 +93,7 @@ class Clusterize(object):
         }
 
         if '/' in self.params['job_name']:
-            print(fore.RED + 'Why does your job name have slashes? It\'s a name for the job, not a path' + style.RESET)
+            print(Fore.RED + 'Why does your job name have slashes? It\'s a name for the job, not a path' + Style.RESET)
             sys.exit()
 
         self.parse_output_parameter()
@@ -111,7 +110,7 @@ class Clusterize(object):
         else:
             num_inputs = len(user_provided_output.split(','))
             if num_inputs > 2:
-                print(fore.RED + 'clusterize was expecting either 1 or 2 items for (-o, --output) but got {}'.format(num_inputs) + style.RESET)
+                print(Fore.RED + 'clusterize was expecting either 1 or 2 items for (-o, --output) but got {}'.format(num_inputs) + Style.RESET)
                 sys.exit()
 
             output, error = (user_provided_output, user_provided_output) if num_inputs == 1 else user_provided_output.split(',')
@@ -135,7 +134,7 @@ class Clusterize(object):
 
                 # Its directory name either doesnt exist or is a file.
                 else:
-                    print(fore.RED + '{} isn\'t a directory so clusterize is unwilling to set {} as the {} file'.format(os.path.dirname(path), path, name) + style.RESET)
+                    print(Fore.RED + '{} isn\'t a directory so clusterize is unwilling to set {} as the {} file'.format(os.path.dirname(path), path, name) + Style.RESET)
                     sys.exit()
 
 
@@ -191,7 +190,7 @@ class Clusterize(object):
         try:
             output = subprocess.check_output(cmd, shell=True, universal_newlines=True)
         except subprocess.CalledProcessError as e:
-            print(fore.RED + 'ClusterizeError shown above. Change parameters or edit {}'.format(self.config_file_path) + style.RESET)
+            print(Fore.RED + 'ClusterizeError shown above. Change parameters or edit {}'.format(self.config_file_path) + Style.RESET)
             os.remove(self.sbatch_filepath)
             sys.exit()
 
@@ -210,7 +209,7 @@ class Clusterize(object):
                 f.write('# command: {}\n\n'.format(self.params['command']))
 
         extra_msg = ' (log{}: {})'.format('s' if len(files) > 1 else '', ', '.join(files))
-        print(fore.GREEN + str(output.strip()) + extra_msg + style.RESET)
+        print(Fore.GREEN + str(output.strip()) + extra_msg + Style.RESET)
 
         self.add_to_job_history()
 
@@ -220,6 +219,11 @@ class Clusterize(object):
             f = tempfile.NamedTemporaryFile(delete = False, prefix = 'clusterize_' + self.job_seed + '_')
             filepath = f.name
             f.close()
+
+        if self.params['num_gpus']:
+            sbatch_param_list.append('#SBATCH --gres={num_gpus}')
+
+        SBATCH_template = '#!/bin/bash\n' + '\n'.join(sbatch_param_list) + '\ntime {command}\n'
 
         file_as_str = SBATCH_template.format(**self.params)
         with open(filepath, 'w') as f:
@@ -286,7 +290,7 @@ class LimitUserResourceUptake(object):
             output = subprocess.check_output(cmd, shell=True, universal_newlines=True)
             return 0 if output == '' else int(output)
         except subprocess.CalledProcessError as e:
-            print(fore.RED + 'LimitUserResourceUptake :: cmd `{}` failed'.format(cmd) + style.RESET)
+            print(Fore.RED + 'LimitUserResourceUptake :: cmd `{}` failed'.format(cmd) + Style.RESET)
             sys.exit()
 
 
@@ -310,10 +314,10 @@ class LimitUserResourceUptake(object):
             else:
                 if self.give_up_time is not None and self.time_elapsed() > self.give_up_time:
                     # give up
-                    print(fore.RED + 'Giving up after {}s'.format(self.time_elapsed()) + style.RESET)
+                    print(Fore.RED + 'Giving up after {}s'.format(self.time_elapsed()) + Style.RESET)
                     sys.exit(1)
                 else:
-                    print(fore.YELLOW + 'Already utilizing {} cores... trying again in {}s'.format(current_num_CPUs, self.check_every))
+                    print(Fore.YELLOW + 'Already utilizing {} cores... trying again in {}s'.format(current_num_CPUs, self.check_every))
                     time.sleep(self.check_every)
                     self.increment_check_every()
 
@@ -334,14 +338,14 @@ def main(args):
 
 def get_default_config(path):
     if os.path.exists(path):
-        print(fore.RED + '{} already exists. delete it first if you want to create a new default config'.format(path) + style.RESET)
+        print(Fore.RED + '{} already exists. delete it first if you want to create a new default config'.format(path) + Style.RESET)
         sys.exit()
 
     config = configparser.ConfigParser()
     config['CLUSTERIZE_DEFAULTS'] = {k: str(v) for k, v in out_of_box_defaults.items()}
     with open(path, 'w') as configfile:
         config.write(configfile)
-    print(fore.GREEN + 'default config file written to {}'.format(path) + style.RESET)
+    print(Fore.GREEN + 'default config file written to {}'.format(path) + Style.RESET)
 
 
 if __name__ == '__main__':
@@ -385,6 +389,7 @@ if __name__ == '__main__':
                                                             and error logs. Use this flag to suppress this behavior.')
     groupA.add_argument('-N','--num-nodes', type=int, help='How many nodes you want to use? default is {}'.format(out_of_box_defaults['num_nodes']))
     groupA.add_argument('-n','--num-tasks-per-node', type=int, help='How many nodes you want to use? default {}'.format(out_of_box_defaults['num_tasks_per_node']))
+    groupA.add_argument('-g','--num-gpus', type=int, help='How many GPUs you want to use? default {}'.format(out_of_box_defaults['num_gpus']))
     groupA.add_argument('-R','--max-resources', type=int, default=None, help='If you don\'t want to hog the cluster by submitting tons of jobs,\
                                                                 this parameter is for you. The job will not be submitted until\
                                                                 {the number of CPUS you are currently using} + {the number of\
