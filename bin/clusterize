@@ -12,7 +12,10 @@ import datetime
 import subprocess
 import configparser
 
-from colored import Style, Fore
+if sys.version_info > (3, 10):
+    from colored import Style, Fore
+else:
+    from colored import style as Style, fore as Fore
 
 history_file = os.path.join(os.path.expanduser('~'), '.clusterize_history')
 if not os.path.exists(history_file):
