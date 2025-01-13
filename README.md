@@ -91,6 +91,8 @@ Since this README was last updated, here are the options available:
                         How many nodes you want to use? default is 1
   -n NUM_TASKS_PER_NODE, --num-tasks-per-node NUM_TASKS_PER_NODE
                         How many nodes you want to use? default 1
+  -g NUM_GPUS, --num-gpus NUM_GPUS
+                        How many GPUs you want to use?
   -t ALLOTTED_TIME, --allotted-time ALLOTTED_TIME
                         After this amount of time, the process will be killed
                         :( The default is 4-0:00:00, which could be higher
