@@ -12,10 +12,16 @@ import datetime
 import subprocess
 import configparser
 
-if sys.version_info > (3, 10):
-    from colored import Style, Fore
-else:
+# check the version of colored and import the appropriate class
+import warnings
+warnings.simplefilter("ignore", category=DeprecationWarning)
+import pkg_resources
+
+version = pkg_resources.get_distribution("colored").version
+if version < "2.0.0":
     from colored import style as Style, fore as Fore
+else:
+    from colored import Style, Fore
 
 history_file = os.path.join(os.path.expanduser('~'), '.clusterize_history')
 if not os.path.exists(history_file):
