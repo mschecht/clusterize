@@ -62,7 +62,7 @@ out_of_box_defaults = {
     'nodelist': '',
     'exclude': '',
     'mail_user': '',
-    'mail_type': 'ALL',
+    'mail_type': 'NONE',
     'dont_add_random_string_to_job_name_and_outputs': 0,
 }
 
