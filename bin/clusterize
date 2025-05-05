@@ -40,6 +40,7 @@ sbatch_param_list = ['#SBATCH --job-name={job_name}',
 '#SBATCH --output={output}',
 '#SBATCH --error={error}',
 '#SBATCH --partition={partition}',
+'#SBATCH --account={account}',
 '#SBATCH --nodes={num_nodes}',
 '#SBATCH --ntasks-per-node={num_tasks_per_node}',
 '#SBATCH --time={allotted_time}',
@@ -54,6 +55,7 @@ sbatch_param_list = ['#SBATCH --job-name={job_name}',
 out_of_box_defaults = {
     'job_name': 'clusterize',
     'partition': None,
+    'account': None,
     'num_nodes': 1,
     'num_tasks_per_node': 1,
     'num_gpus': '',
@@ -88,6 +90,7 @@ class Clusterize(object):
             'command': A('command', self.get_default),
             'job_name': A('job_name', self.get_default),
             'partition': A('partition', self.get_default),
+            'account': A('account', self.get_default),
             'num_nodes': A('num_nodes', self.get_default),
             'num_tasks_per_node': A('num_tasks_per_node', self.get_default),
             'num_gpus': ''.join(['gpu:', str(A('num_gpus', self.get_default))]) if A('num_gpus', self.get_default) != '' else None,
@@ -379,6 +382,7 @@ if __name__ == '__main__':
                                               your config file. Any parameter set here overwrites that found in the config file")
 
     groupA.add_argument('-p','--partition', type=str, help='Which partition of the cluster are you using?')
+    groupA.add_argument('-a','--account', type=str, help='Which account of the cluster are you using?')
     groupA.add_argument('-j','--job-name', type=str, help='Give a useful name to your job if you want. This name will show\
                                                            up in the SLURM queue. The default is simply {}'.format(out_of_box_defaults['job_name']))
     groupA.add_argument('-o','--output', type=str, help='Specify your output files here. Supply any \
