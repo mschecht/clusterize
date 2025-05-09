@@ -44,13 +44,11 @@ sbatch_param_list = ['#SBATCH --job-name={job_name}',
 '#SBATCH --nodes={num_nodes}',
 '#SBATCH --ntasks-per-node={num_tasks_per_node}',
 '#SBATCH --time={allotted_time}',
-'#SBATCH --mem-per-cpu={mem_per_cpu}',
 '#SBATCH --open-mode=append',
 '#SBATCH --nodelist={nodelist}',
 '#SBATCH --exclude={exclude}',
 '#SBATCH --mail-user={mail_user}',
 '#SBATCH --mail-type={mail_type}']
-
 
 out_of_box_defaults = {
     'job_name': 'clusterize',
@@ -60,7 +58,7 @@ out_of_box_defaults = {
     'num_tasks_per_node': 1,
     'num_gpus': '',
     'allotted_time': '4-0:00:00',
-    'mem_per_cpu': 10000,
+    'mem': "1G",
     'nodelist': '',
     'exclude': '',
     'mail_user': '',
@@ -94,6 +92,7 @@ class Clusterize(object):
             'num_nodes': A('num_nodes', self.get_default),
             'num_tasks_per_node': A('num_tasks_per_node', self.get_default),
             'num_gpus': ''.join(['gpu:', str(A('num_gpus', self.get_default))]) if A('num_gpus', self.get_default) != '' else None,
+            'mem': ''.join([str(A('mem', self.get_default))]) if A('mem', self.get_default) != '' else None,
             'allotted_time': A('allotted_time', self.get_default),
             'mem_per_cpu': A('mem_per_cpu', self.get_default),
             'nodelist': A('nodelist', self.get_default),
@@ -106,6 +105,10 @@ class Clusterize(object):
 
         if '/' in self.params['job_name']:
             print(Fore.RED + 'Why does your job name have slashes? It\'s a name for the job, not a path' + Style.RESET)
+            sys.exit()
+        
+        if self.params['mem'] and self.params['mem_per_cpu'] is not None:
+            print(Fore.RED + 'You can\'t use both --mem and --mem-per-cpu. Use one or the other' + Style.RESET)
             sys.exit()
 
         self.parse_output_parameter()
@@ -234,6 +237,9 @@ class Clusterize(object):
 
         if self.params['num_gpus']:
             sbatch_param_list.append('#SBATCH --gres={num_gpus}')
+        
+        if self.params['mem']:
+            sbatch_param_list.append('#SBATCH --mem={mem}G')
 
         SBATCH_template = '#!/bin/bash\n' + '\n'.join(sbatch_param_list) + '\ntime {command}\n'
 
@@ -414,8 +420,8 @@ if __name__ == '__main__':
                                                       default is {}, which could be higher than your cluster allows.\
                                                       One acceptable time format is DD-HH:MM:SS, i.e. 15 hours would\
                                                       be: `15:00:00`, 1 day and 3 seconds would be `01-00:00:03``'.format(out_of_box_defaults['allotted_time']))
-    groupA.add_argument('-M','--mem-per-cpu', type=int, help='How much memory in MB should be allotted per cpu? Default\
-                                                              is {}'.format(out_of_box_defaults['mem_per_cpu']))
+    groupA.add_argument('-m','--mem', type=int, help='How memory in GB should be allotted to the job? Note that this is removed when using `--mem-per-cpu`')
+    groupA.add_argument('-M','--mem-per-cpu', type=int, help='How much memory in MB should be allotted per cpu?')
     groupA.add_argument('--nodelist', help='Run the job using a specific node, or multiple nodes (comma separated) if it is a multi-node job. Default is {}. See also --exclude'.format(out_of_box_defaults['nodelist']))
     groupA.add_argument('--exclude', help='Run the job making sure NOT to use these nodes (comma separated). Default is {}. See also --nodelist'.format(out_of_box_defaults['exclude']))
     groupA.add_argument('--mail-user', help='email address to send updates to. Default is {}'.format(out_of_box_defaults['mail_user']))
