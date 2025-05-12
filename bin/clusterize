@@ -59,6 +59,7 @@ out_of_box_defaults = {
     'num_gpus': '',
     'allotted_time': '4-0:00:00',
     'mem': "1G",
+    'write_sbatch': False,
     'nodelist': '',
     'exclude': '',
     'mail_user': '',
@@ -95,6 +96,7 @@ class Clusterize(object):
             'mem': ''.join([str(A('mem', self.get_default))]) if A('mem', self.get_default) != '' else None,
             'allotted_time': A('allotted_time', self.get_default),
             'mem_per_cpu': A('mem_per_cpu', self.get_default),
+            'write_sbatch': A('write_sbatch', self.get_default),
             'nodelist': A('nodelist', self.get_default),
             'exclude': A('exclude', self.get_default),
             'mail_user': A('mail_user', self.get_default),
@@ -209,7 +211,14 @@ class Clusterize(object):
             os.remove(self.sbatch_filepath)
             sys.exit()
 
-        os.remove(self.sbatch_filepath)
+        if self.params['write_sbatch']:
+            # write the sbatch file to the current working directory
+            filepath = os.path.join(os.path.dirname(self.params['output']), "_".join([self.params['job_name'] + '.sbatch']))  
+            with open(filepath, 'w') as f:
+                f.write(self.file_as_str)
+            print(Fore.GREEN + 'sbatch file written to {}'.format(filepath) + Style.RESET)
+        else:
+            os.remove(self.sbatch_filepath)
 
         files = [self.params['output'], self.params['error']] if self.params['output'] != self.params['error'] else [self.params['output']]
 
@@ -243,9 +252,9 @@ class Clusterize(object):
 
         SBATCH_template = '#!/bin/bash\n' + '\n'.join(sbatch_param_list) + '\ntime {command}\n'
 
-        file_as_str = SBATCH_template.format(**self.params)
+        self.file_as_str = SBATCH_template.format(**self.params)
         with open(filepath, 'w') as f:
-            f.write(file_as_str)
+            f.write(self.file_as_str)
 
         return filepath
 
@@ -432,6 +441,10 @@ if __name__ == '__main__':
                                                       you can do so here. Once you have modified it to your\
                                                       liking, edit the ~/.clusterize_pointer file so that it points to\
                                                       the path of your new configuration file.")
+    
+    groupC = ap.add_argument_group('SBATCH SCRIPT', 'Save the sbatch script.')
+    groupC.add_argument('--write-sbatch', action='store_true', help="This parameter will let you save the sbatch script clusterize\
+                                                                     generates on the fly!")
 
     args = ap.parse_args()
 
