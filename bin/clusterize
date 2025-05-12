@@ -120,8 +120,13 @@ class Clusterize(object):
 
     def parse_output_parameter(self):
         user_provided_output = args.__dict__.get('output', None)
+
+        if not user_provided_output.endswith('.log'):
+            print(Fore.RED + f'Your output file, {user_provided_output}, does not end with ".log"' + Style.RESET)
+            sys.exit()
+
         if not user_provided_output:
-            job_name = self.params['job_name']
+            # job_name = self.params['job_name']
             self.params['output'] = self.params['job_name'] + '.log'
             self.params['error'] = self.params['job_name'] + '.log'
         else:
