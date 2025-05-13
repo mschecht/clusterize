@@ -43,6 +43,8 @@ sbatch_param_list = ['#SBATCH --job-name={job_name}',
 '#SBATCH --account={account}',
 '#SBATCH --nodes={num_nodes}',
 '#SBATCH --ntasks-per-node={num_tasks_per_node}',
+# '#SBATCH --ntasks={ntasks}',
+# '#SBATCH --cpus-per-task={cpus_per_task}',
 '#SBATCH --time={allotted_time}',
 '#SBATCH --open-mode=append',
 '#SBATCH --nodelist={nodelist}',
@@ -56,9 +58,11 @@ out_of_box_defaults = {
     'account': None,
     'num_nodes': 1,
     'num_tasks_per_node': 1,
+    # 'ntasks': 1,
+    # 'cpus_per_task': 1,
     'num_gpus': '',
     'allotted_time': '4-0:00:00',
-    'mem': "1G",
+    'mem': "1",
     'write_sbatch': False,
     'nodelist': '',
     'exclude': '',
@@ -113,6 +117,20 @@ class Clusterize(object):
             print(Fore.RED + 'You can\'t use both --mem and --mem-per-cpu. Use one or the other' + Style.RESET)
             sys.exit()
 
+        if self.params['num_nodes'] and self.params['nodelist']:
+            nodelist = self.params['nodelist']
+            include_set = set(n.strip() for n in nodelist.split(',') if n.strip())
+            if int(self.params['num_nodes']) != len(include_set):
+                print(Fore.RED + f"The number of nodes in --nodelist doesn't not match the parameter --nodes!" + Style.RESET)
+                sys.exit()
+
+        if self.params['nodelist'] and self.params['exclude']:
+            conflict = self.validate_node_conflict(self.params['nodelist'], self.params['exclude'])
+
+            if conflict:
+                print(Fore.RED + f"Conflicting nodes in both --nodelist and --exclude: {', '.join(conflict)}" + Style.RESET)
+                sys.exit()
+
         self.parse_output_parameter()
 
         self.handle_random_string()
@@ -121,9 +139,10 @@ class Clusterize(object):
     def parse_output_parameter(self):
         user_provided_output = args.__dict__.get('output', None)
 
-        if not user_provided_output.endswith('.log'):
-            print(Fore.RED + f'Your output file, {user_provided_output}, does not end with ".log"' + Style.RESET)
-            sys.exit()
+        if user_provided_output:
+            if not user_provided_output.endswith('.log'):
+                print(Fore.RED + f'Your output file, {user_provided_output}, does not end with ".log"' + Style.RESET)
+                sys.exit()
 
         if not user_provided_output:
             # job_name = self.params['job_name']
@@ -158,6 +177,21 @@ class Clusterize(object):
                 else:
                     print(Fore.RED + '{} isn\'t a directory so clusterize is unwilling to set {} as the {} file'.format(os.path.dirname(path), path, name) + Style.RESET)
                     sys.exit()
+
+    def validate_node_conflict(self, nodelist, exclude):
+        """
+        Raise an error if any node is both included and excluded.
+        
+        Parameters:
+        - nodelist: str, comma-separated list of nodes to include
+        - exclude: str, comma-separated list of nodes to exclude
+        """
+        include_set = set(n.strip() for n in nodelist.split(',') if n.strip())
+        exclude_set = set(n.strip() for n in exclude.split(',') if n.strip())
+
+        conflict = include_set & exclude_set
+
+        return conflict
 
 
     def handle_random_string(self):
@@ -209,6 +243,8 @@ class Clusterize(object):
     def run_job(self):
         cmd = 'sbatch {}'.format(self.sbatch_filepath)
 
+        print(Fore.GREEN + f"SBATCH file:\n{self.file_as_str}" + Style.RESET)
+        
         try:
             output = subprocess.check_output(cmd, shell=True, universal_newlines=True)
         except subprocess.CalledProcessError as e:
@@ -457,4 +493,3 @@ if __name__ == '__main__':
         get_default_config(path=args.gen_new_config_file)
     else:
         main(args)
-
