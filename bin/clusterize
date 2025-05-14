@@ -2,6 +2,7 @@
 # -*- coding: utf-8
 
 import os
+import re
 import sys
 import time
 import random
@@ -42,9 +43,8 @@ sbatch_param_list = ['#SBATCH --job-name={job_name}',
 '#SBATCH --partition={partition}',
 '#SBATCH --account={account}',
 '#SBATCH --nodes={num_nodes}',
-'#SBATCH --ntasks-per-node={num_tasks_per_node}',
-# '#SBATCH --ntasks={ntasks}',
-# '#SBATCH --cpus-per-task={cpus_per_task}',
+'#SBATCH --ntasks={num_tasks}',
+'#SBATCH --cpus-per-task={cpus_per_task}',
 '#SBATCH --time={allotted_time}',
 '#SBATCH --open-mode=append',
 '#SBATCH --nodelist={nodelist}',
@@ -57,12 +57,10 @@ out_of_box_defaults = {
     'partition': None,
     'account': None,
     'num_nodes': 1,
-    'num_tasks_per_node': 1,
-    # 'ntasks': 1,
-    # 'cpus_per_task': 1,
-    'num_gpus': '',
+    'num_tasks': 1,
+    'cpus_per_task': 1,
     'allotted_time': '4-0:00:00',
-    'mem': "1",
+    'mem': "1G",
     'write_sbatch': False,
     'nodelist': '',
     'exclude': '',
@@ -95,11 +93,12 @@ class Clusterize(object):
             'partition': A('partition', self.get_default),
             'account': A('account', self.get_default),
             'num_nodes': A('num_nodes', self.get_default),
-            'num_tasks_per_node': A('num_tasks_per_node', self.get_default),
-            'num_gpus': ''.join(['gpu:', str(A('num_gpus', self.get_default))]) if A('num_gpus', self.get_default) != '' else None,
+            'num_tasks': A('num_tasks', self.get_default),
+            'cpus_per_task': A('cpus_per_task', self.get_default),
+            'num_gpus': A('num_gpus', self.get_default),
+            'mem_per_gpu': A('mem_per_gpu', self.get_default),
             'mem': ''.join([str(A('mem', self.get_default))]) if A('mem', self.get_default) != '' else None,
             'allotted_time': A('allotted_time', self.get_default),
-            'mem_per_cpu': A('mem_per_cpu', self.get_default),
             'write_sbatch': A('write_sbatch', self.get_default),
             'nodelist': A('nodelist', self.get_default),
             'exclude': A('exclude', self.get_default),
@@ -109,20 +108,38 @@ class Clusterize(object):
             'seed': self.job_seed,
         }
 
+        self.sanity_check_params()
+
+        self.parse_output_parameter()
+
+        self.handle_random_string()
+
+
+    def sanity_check_params(self):
         if '/' in self.params['job_name']:
             print(Fore.RED + 'Why does your job name have slashes? It\'s a name for the job, not a path' + Style.RESET)
             sys.exit()
-        
-        if self.params['mem'] and self.params['mem_per_cpu'] is not None:
-            print(Fore.RED + 'You can\'t use both --mem and --mem-per-cpu. Use one or the other' + Style.RESET)
+
+        if not self.valid_memory_format(self.params['mem']):
+            print(Fore.RED + f"Memory parameter --mem ({self.params['mem']}) is not valid. Try a value like 8G or 8000M." + Style.RESET)
             sys.exit()
 
-        if self.params['num_nodes'] and self.params['nodelist']:
+        if self.params['nodelist']:
             nodelist = self.params['nodelist']
             include_set = set(n.strip() for n in nodelist.split(',') if n.strip())
-            if int(self.params['num_nodes']) != len(include_set):
-                print(Fore.RED + f"The number of nodes in --nodelist doesn't not match the parameter --nodes!" + Style.RESET)
-                sys.exit()
+
+            if self.params['num_nodes']:
+                try:
+                    num_nodes = int(self.params['num_nodes'])
+                except ValueError:
+                    print(Fore.RED + f"--nodes must be an integer (got: {self.params['num_nodes']})" + Style.RESET)
+                    sys.exit()
+
+                if num_nodes != len(include_set):
+                    print(Fore.RED + f"The number of nodes in --nodelist does not match the parameter --nodes!" + Style.RESET)
+                    sys.exit()
+            else:
+                self.params['num_nodes'] = len(include_set)
 
         if self.params['nodelist'] and self.params['exclude']:
             conflict = self.validate_node_conflict(self.params['nodelist'], self.params['exclude'])
@@ -130,10 +147,19 @@ class Clusterize(object):
             if conflict:
                 print(Fore.RED + f"Conflicting nodes in both --nodelist and --exclude: {', '.join(conflict)}" + Style.RESET)
                 sys.exit()
+        
+        if self.params['mem_per_gpu'] and not self.params['num_gpus']:
+            print(Fore.RED + f"Memory per GPU (--mem-per-gpu) is specified but no GPUs (--gpus) are requested." + Style.RESET)
+            sys.exit()
 
-        self.parse_output_parameter()
+        if self.params['num_gpus'] and not self.params['mem_per_gpu']:
+            self.params['mem_per_gpu'] = '1G'
 
-        self.handle_random_string()
+
+    def valid_memory_format(self, mem):
+        if not mem:
+            return True
+        return bool(re.match(r'^\d+[KMGTP]$', str(mem).upper()))
 
 
     def parse_output_parameter(self):
@@ -286,11 +312,10 @@ class Clusterize(object):
             f.close()
 
         if self.params['num_gpus']:
-            sbatch_param_list.append('#SBATCH --gres={num_gpus}')
+            self.valid_memory_format(self.params['mem_per_gpu'])
+            sbatch_param_list.append('#SBATCH --gres=gpu:{num_gpus}')
+            sbatch_param_list.append('#SBATCH --mem-per-gpu={mem_per_gpu}')
         
-        if self.params['mem']:
-            sbatch_param_list.append('#SBATCH --mem={mem}G')
-
         SBATCH_template = '#!/bin/bash\n' + '\n'.join(sbatch_param_list) + '\ntime {command}\n'
 
         self.file_as_str = SBATCH_template.format(**self.params)
@@ -398,7 +423,7 @@ def main(args):
     c = Clusterize(args)
 
     total = args.max_resources
-    requested = int(c.params['num_nodes']) * int(c.params['num_tasks_per_node'])
+    requested = int(c.params['num_tasks'])
 
     with LimitUserResourceUptake(total, requested):
         c.submit()
@@ -456,9 +481,12 @@ if __name__ == '__main__':
     groupA.add_argument('-x', '--dont-add-random-string-to-job-name-and-outputs', action='store_true', default=None,
                                                       help='By default a unique string is added to job name and the output\
                                                             and error logs. Use this flag to suppress this behavior.')
+    groupA.add_argument('--nodelist', help='Run the job using a specific node, or multiple nodes (comma separated) if it is a multi-node job. Default is {}. See also --exclude'.format(out_of_box_defaults['nodelist']))
     groupA.add_argument('-N','--num-nodes', type=int, help='How many nodes you want to use? default is {}'.format(out_of_box_defaults['num_nodes']))
-    groupA.add_argument('-n','--num-tasks-per-node', type=int, help='How many nodes you want to use? default {}'.format(out_of_box_defaults['num_tasks_per_node']))
-    groupA.add_argument('-g','--num-gpus', type=int, help='How many GPUs you want to use? default {}'.format(out_of_box_defaults['num_gpus']))
+    groupA.add_argument('-n','--num-tasks', type=int, help='How many total tasks? default {}'.format(out_of_box_defaults['num_tasks']))
+    groupA.add_argument('-m','--mem', type=str, help='How memory should be allotted to the job?' \
+                                                     'Make sure to denote the memory unit with single capital letter after the value e.g. 32G or 500M'
+                                                     'Note that this is removed when using `--mem-per-cpu`')
     groupA.add_argument('-R','--max-resources', type=int, default=None, help='If you don\'t want to hog the cluster by submitting tons of jobs,\
                                                                 this parameter is for you. The job will not be submitted until\
                                                                 {the number of CPUS you are currently using} + {the number of\
@@ -470,9 +498,6 @@ if __name__ == '__main__':
                                                       default is {}, which could be higher than your cluster allows.\
                                                       One acceptable time format is DD-HH:MM:SS, i.e. 15 hours would\
                                                       be: `15:00:00`, 1 day and 3 seconds would be `01-00:00:03``'.format(out_of_box_defaults['allotted_time']))
-    groupA.add_argument('-m','--mem', type=int, help='How memory in GB should be allotted to the job? Note that this is removed when using `--mem-per-cpu`')
-    groupA.add_argument('-M','--mem-per-cpu', type=int, help='How much memory in MB should be allotted per cpu?')
-    groupA.add_argument('--nodelist', help='Run the job using a specific node, or multiple nodes (comma separated) if it is a multi-node job. Default is {}. See also --exclude'.format(out_of_box_defaults['nodelist']))
     groupA.add_argument('--exclude', help='Run the job making sure NOT to use these nodes (comma separated). Default is {}. See also --nodelist'.format(out_of_box_defaults['exclude']))
     groupA.add_argument('--mail-user', help='email address to send updates to. Default is {}'.format(out_of_box_defaults['mail_user']))
     groupA.add_argument('--mail-type', help='Comma-separated from this list: (NONE, BEGIN, END, FAIL, ALL). Default is {}'.format(out_of_box_defaults['mail_type']))
@@ -482,9 +507,13 @@ if __name__ == '__main__':
                                                       you can do so here. Once you have modified it to your\
                                                       liking, edit the ~/.clusterize_pointer file so that it points to\
                                                       the path of your new configuration file.")
+                                                      
+    groupC = ap.add_argument_group('GPUS', "Get fancy with GPUs!")
+    groupC.add_argument('-g','--num-gpus', type=int, help='How many GPUs you want to use?')
+    groupC.add_argument('-G','--mem-per-gpu', type=str, help='How much memory per GPU? default is 1G')
     
-    groupC = ap.add_argument_group('SBATCH SCRIPT', 'Save the sbatch script.')
-    groupC.add_argument('--write-sbatch', action='store_true', help="This parameter will let you save the sbatch script clusterize\
+    groupD = ap.add_argument_group('SBATCH SCRIPT', 'Save the sbatch script.')
+    groupD.add_argument('--write-sbatch', action='store_true', help="This parameter will let you save the sbatch script clusterize\
                                                                      generates on the fly!")
 
     args = ap.parse_args()
