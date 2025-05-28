@@ -46,6 +46,7 @@ sbatch_param_list = ['#SBATCH --job-name={job_name}',
 '#SBATCH --ntasks={num_tasks}',
 '#SBATCH --cpus-per-task={cpus_per_task}',
 '#SBATCH --time={allotted_time}',
+'#SBATCH --mem={mem}',
 '#SBATCH --open-mode=append',
 '#SBATCH --nodelist={nodelist}',
 '#SBATCH --exclude={exclude}',
@@ -484,6 +485,7 @@ if __name__ == '__main__':
     groupA.add_argument('--nodelist', help='Run the job using a specific node, or multiple nodes (comma separated) if it is a multi-node job. Default is {}. See also --exclude'.format(out_of_box_defaults['nodelist']))
     groupA.add_argument('-N','--num-nodes', type=int, help='How many nodes you want to use? default is {}'.format(out_of_box_defaults['num_nodes']))
     groupA.add_argument('-n','--num-tasks', type=int, help='How many total tasks? default {}'.format(out_of_box_defaults['num_tasks']))
+    groupA.add_argument('-c','--cpus-per-task', type=int, help='How CPUs per tasks? default {}'.format(out_of_box_defaults['cpus_per_task']))
     groupA.add_argument('-m','--mem', type=str, help='How memory should be allotted to the job?' \
                                                      'Make sure to denote the memory unit with single capital letter after the value e.g. 32G or 500M'
                                                      'Note that this is removed when using `--mem-per-cpu`')
